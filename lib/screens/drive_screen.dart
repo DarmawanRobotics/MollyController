@@ -276,6 +276,33 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
+  /// The POI the robot is busy with: the tour's stop, else the goal it walks to.
+  String? _focusPoi(RobotState state) {
+    final tour = state.tour;
+    if (tour != null && tour.active && tour.poiId.isNotEmpty) return tour.poiId;
+    final planner = state.planner;
+    if (planner != null && planner.walking && planner.goal.isNotEmpty) return planner.goal;
+    return null;
+  }
+
+  /// A long press on the big map: walk there, the robot finds the way.
+  Future<void> _goHere(Offset point) async {
+    if (!(client.welcome?.has('go_to') ?? false)) return;
+    final pose = client.state.pose;
+    final yaw = pose == null ? 0.0 : math.atan2(point.dy - pose.y, point.dx - pose.x);
+    final ok = await _confirm(
+      s.t('go_here'),
+      s.t('go_here_body', {'x': point.dx.toStringAsFixed(1), 'y': point.dy.toStringAsFixed(1)}),
+      s.t('go'),
+    );
+    if (!ok || !mounted) return;
+    await _run(
+      'go_to',
+      args: {'x': point.dx, 'y': point.dy, 'yaw': yaw},
+      label: s.t('walking_there'),
+    );
+  }
+
   void _robotAction(String name) {
     final commands = client.welcome?.robotCommands ?? const <String>[];
     if (commands.contains(name)) _runAction(robotAction(name));
@@ -418,6 +445,10 @@ class _DriveScreenState extends State<DriveScreen> {
       viewport: _viewport,
       points: client.lidarPoints,
       route: client.routePoints,
+      map: client.mapLayer,
+      site: client.site,
+      highlight: _focusPoi(state),
+      onLongPress: _goHere,
       trail: client.trail,
       marks: state.recording ? _marks : const [],
       pose: state.pose,

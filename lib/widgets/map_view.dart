@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -5,11 +6,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../protocol/messages.dart';
+import '../protocol/streams.dart';
 import '../theme.dart';
+import 'map_image.dart';
 
 /// What the map shows.
 enum MapMode {
-  /// The loaded route, where the robot has been and the robot.
+  /// The map, its POIs, the loaded route or path, where the robot has been and the robot.
   fit,
 
   /// A fixed span around the robot, moving with it.
@@ -86,12 +89,14 @@ class MapViewport extends ChangeNotifier {
   }
 }
 
-/// Top-down map in the map frame: the loaded route with its waypoints and stop points, where the
-/// robot has been, the lidar returns and the robot itself.
+/// Top-down map in the map frame: the site's occupancy map and POIs, the loaded route or the path
+/// the robot found with its waypoints and stop points, where the robot has been, the lidar
+/// returns and the robot itself.
 ///
 /// The big map zooms with a pinch, moves with a drag and turns with a two-finger twist (nearly
-/// north snaps north); a double tap follows the robot again. The small one only shows. Without a
-/// pose (not localized) it shows the lidar around the robot, which looks up the screen.
+/// north snaps north); a double tap follows the robot again, a long press picks a place. The
+/// small one only shows. Without a pose (not localized) it shows the site map without the robot,
+/// or, without a map, the lidar around the robot, which looks up the screen.
 class MapView extends StatefulWidget {
   const MapView({
     super.key,
@@ -103,6 +108,10 @@ class MapView extends StatefulWidget {
     required this.modeColor,
     required this.lidar,
     required this.notLocalizedText,
+    this.map,
+    this.site,
+    this.highlight,
+    this.onLongPress,
     this.marks = const [],
     this.compact = false,
   });
@@ -111,6 +120,18 @@ class MapView extends StatefulWidget {
   final ValueListenable<Float32List?> points;
   final ValueListenable<List<RoutePoint>> route;
   final List<Offset> trail;
+
+  /// The site's occupancy map, drawn under everything else.
+  final ValueListenable<MapLayer?>? map;
+
+  /// The site's POIs, drawn with their names.
+  final ValueListenable<SiteData?>? site;
+
+  /// The POI the robot is walking to or talking about, ringed.
+  final String? highlight;
+
+  /// A long press on the big map: the place in map metres.
+  final ValueChanged<Offset>? onLongPress;
 
   /// Stop points marked in the route being recorded (not in the route stream yet).
   final List<Offset> marks;
@@ -130,6 +151,14 @@ class _MapViewState extends State<MapView> {
   late Listenable _changes = _merge();
   Size _size = Size.zero;
 
+  /// The map image in the handheld's colours and where it lies; null until decoded.
+  ui.Image? _mapImage;
+  MapHeader? _mapHeader;
+
+  /// The layer decoded last, and a counter that drops decodes of older layers.
+  MapLayer? _decoded;
+  int _decodes = 0;
+
   /// Twist of the fingers before the map starts turning, and the turn that snaps north.
   static const _twistThreshold = 0.2;
   static const _snapNorth = 0.12;
@@ -146,61 +175,145 @@ class _MapViewState extends State<MapView> {
   /// Finger twist when the map started turning in this gesture; null while it does not turn.
   double? _twistFrom;
 
-  Listenable _merge() => Listenable.merge([widget.viewport, widget.points, widget.route]);
+  Listenable _merge() => Listenable.merge([
+    widget.viewport,
+    widget.points,
+    widget.route,
+    if (widget.site != null) widget.site!,
+  ]);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.map?.addListener(_onMap);
+    _onMap();
+  }
 
   @override
   void didUpdateWidget(MapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.viewport != widget.viewport ||
         oldWidget.points != widget.points ||
-        oldWidget.route != widget.route) {
+        oldWidget.route != widget.route ||
+        oldWidget.site != widget.site) {
       _changes = _merge();
     }
+    if (oldWidget.map != widget.map) {
+      oldWidget.map?.removeListener(_onMap);
+      widget.map?.addListener(_onMap);
+      _onMap();
+    }
   }
+
+  @override
+  void dispose() {
+    widget.map?.removeListener(_onMap);
+    _decodes++;
+    _mapImage?.dispose();
+    super.dispose();
+  }
+
+  /// A new map from the robot: decode it off the frame, newest wins.
+  void _onMap() {
+    final layer = widget.map?.value;
+    if (identical(layer, _decoded)) return;
+    _decoded = layer;
+    final decode = ++_decodes;
+    if (layer == null) {
+      _setMap(null, null);
+      return;
+    }
+    unawaited(
+      decodeMapImage(layer.png).then((image) {
+        if (!mounted || decode != _decodes) {
+          image?.dispose();
+          return;
+        }
+        _setMap(image, image == null ? null : layer.header);
+      }),
+    );
+  }
+
+  void _setMap(ui.Image? image, MapHeader? header) {
+    if (image == null && _mapImage == null && header == _mapHeader) return;
+    setState(() {
+      _mapImage?.dispose();
+      _mapImage = image;
+      _mapHeader = header;
+    });
+  }
+
+  /// A map to draw the view around, also without a pose.
+  bool get _hasMap => _mapImage != null && _mapHeader != null;
+
+  List<Poi> get _pois => widget.site?.value?.pois ?? const <Poi>[];
 
   /// Middle of the view (map metres), pixels per metre and the turn of the map on screen.
   ({Offset center, double scale, double rotation}) _view() {
     final viewport = widget.viewport;
     final shorter = math.max(1.0, _size.shortestSide);
     final pose = widget.pose;
-    if (pose == null) return (center: Offset.zero, scale: shorter / viewport.span, rotation: 0.0);
-    final rotation = viewport.rotationFor(pose.yaw);
+    if (pose == null && !_hasMap) {
+      return (center: Offset.zero, scale: shorter / viewport.span, rotation: 0.0);
+    }
+    final rotation = viewport.rotationFor(pose?.yaw);
     switch (viewport.mode) {
       case MapMode.follow:
+        if (pose == null) return _fit(pose, rotation); // nobody to follow: the whole map
         return (center: Offset(pose.x, pose.y), scale: shorter / viewport.span, rotation: rotation);
       case MapMode.free:
         return (center: viewport.center, scale: shorter / viewport.span, rotation: rotation);
       case MapMode.fit:
-        // the bounding box as the map is turned on screen
-        final c = math.cos(rotation), s = math.sin(rotation);
-        var minX = double.infinity, maxX = -double.infinity;
-        var minY = double.infinity, maxY = -double.infinity;
-        void include(double x, double y) {
-          final tx = x * c - y * s, ty = x * s + y * c;
-          minX = math.min(minX, tx);
-          maxX = math.max(maxX, tx);
-          minY = math.min(minY, ty);
-          maxY = math.max(maxY, ty);
-        }
-
-        include(pose.x, pose.y);
-        for (final p in widget.route.value) {
-          include(p.x, p.y);
-        }
-        for (final p in widget.trail) {
-          include(p.dx, p.dy);
-        }
-        const margin = 1.5;
-        final least = widget.compact ? 6.0 : 8.0;
-        final width = math.max(maxX - minX + 2 * margin, least);
-        final height = math.max(maxY - minY + 2 * margin, least);
-        final mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
-        return (
-          center: Offset(mx * c + my * s, -mx * s + my * c),
-          scale: math.min(math.max(1.0, _size.width) / width, math.max(1.0, _size.height) / height),
-          rotation: rotation,
-        );
+        return _fit(pose, rotation);
     }
+  }
+
+  /// Everything there is to see, as the map is turned on screen: the robot, the route or path,
+  /// the trail, the map and its POIs.
+  ({Offset center, double scale, double rotation}) _fit(Pose? pose, double rotation) {
+    final c = math.cos(rotation), s = math.sin(rotation);
+    var minX = double.infinity, maxX = -double.infinity;
+    var minY = double.infinity, maxY = -double.infinity;
+    void include(double x, double y) {
+      final tx = x * c - y * s, ty = x * s + y * c;
+      minX = math.min(minX, tx);
+      maxX = math.max(maxX, tx);
+      minY = math.min(minY, ty);
+      maxY = math.max(maxY, ty);
+    }
+
+    if (pose != null) include(pose.x, pose.y);
+    for (final p in widget.route.value) {
+      include(p.x, p.y);
+    }
+    for (final p in widget.trail) {
+      include(p.dx, p.dy);
+    }
+    for (final poi in _pois) {
+      include(poi.x, poi.y);
+    }
+    final header = _mapHeader;
+    if (header != null && _mapImage != null) {
+      final x0 = header.originX, y0 = header.originY;
+      final x1 = x0 + header.widthMetres, y1 = y0 + header.heightMetres;
+      include(x0, y0);
+      include(x1, y0);
+      include(x0, y1);
+      include(x1, y1);
+    }
+    if (minX > maxX) {
+      minX = maxX = minY = maxY = 0; // nothing at all: the origin
+    }
+    const margin = 1.5;
+    final least = widget.compact ? 6.0 : 8.0;
+    final width = math.max(maxX - minX + 2 * margin, least);
+    final height = math.max(maxY - minY + 2 * margin, least);
+    final mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+    return (
+      center: Offset(mx * c + my * s, -mx * s + my * c),
+      scale: math.min(math.max(1.0, _size.width) / width, math.max(1.0, _size.height) / height),
+      rotation: rotation,
+    );
   }
 
   /// Map metres of a screen offset from the middle of the view.
@@ -222,7 +335,7 @@ class _MapViewState extends State<MapView> {
     _baseScale = view.scale;
     _baseRotation = view.rotation;
     _anchor = _mapPointAt(details.localFocalPoint);
-    _aroundRobot = widget.viewport.mode == MapMode.follow;
+    _aroundRobot = widget.viewport.mode == MapMode.follow && widget.pose != null;
     _twistFrom = null;
   }
 
@@ -230,7 +343,7 @@ class _MapViewState extends State<MapView> {
     final viewport = widget.viewport;
     final shorter = math.max(1.0, _size.shortestSide);
     final span = MapViewport.clampSpan(shorter / (_baseScale * details.scale));
-    if (widget.pose == null) {
+    if (widget.pose == null && !_hasMap) {
       viewport.zoom(span); // around the robot, which looks up the screen
       return;
     }
@@ -263,6 +376,12 @@ class _MapViewState extends State<MapView> {
     _twistFrom = null;
   }
 
+  void _onLongPress(LongPressStartDetails details) {
+    final pick = widget.onLongPress;
+    if (pick == null || (widget.pose == null && !_hasMap)) return;
+    pick(_mapPointAt(details.localPosition));
+  }
+
   @override
   Widget build(BuildContext context) {
     final interactive = !widget.compact;
@@ -274,6 +393,7 @@ class _MapViewState extends State<MapView> {
           onScaleUpdate: interactive ? _onScaleUpdate : null,
           onScaleEnd: interactive ? _onScaleEnd : null,
           onDoubleTap: interactive ? widget.viewport.follow : null,
+          onLongPressStart: interactive && widget.onLongPress != null ? _onLongPress : null,
           child: ListenableBuilder(
             listenable: _changes,
             builder: (context, _) {
@@ -284,6 +404,10 @@ class _MapViewState extends State<MapView> {
                 children: [
                   CustomPaint(
                     painter: _MapPainter(
+                      mapImage: _mapImage,
+                      mapHeader: _mapHeader,
+                      pois: _pois,
+                      highlight: widget.highlight,
                       cloud: widget.lidar ? widget.points.value : null,
                       route: widget.route.value,
                       trail: widget.trail,
@@ -318,6 +442,10 @@ class _MapViewState extends State<MapView> {
 
 class _MapPainter extends CustomPainter {
   _MapPainter({
+    required this.mapImage,
+    required this.mapHeader,
+    required this.pois,
+    required this.highlight,
     required this.cloud,
     required this.route,
     required this.trail,
@@ -332,6 +460,10 @@ class _MapPainter extends CustomPainter {
     required this.compact,
   });
 
+  final ui.Image? mapImage;
+  final MapHeader? mapHeader;
+  final List<Poi> pois;
+  final String? highlight;
   final Float32List? cloud;
   final List<RoutePoint> route;
   final List<Offset> trail;
@@ -355,7 +487,9 @@ class _MapPainter extends CustomPainter {
     if (size.isEmpty) return;
     canvas.drawRect(Offset.zero & size, Paint()..color = Palette.night);
     final pose = this.pose;
-    if (pose == null) {
+    final image = mapImage;
+    final header = mapHeader;
+    if (pose == null && (image == null || header == null)) {
       _robotCentric(canvas, size);
       return;
     }
@@ -369,10 +503,11 @@ class _MapPainter extends CustomPainter {
       );
     }
 
+    if (image != null && header != null) _map(canvas, image, header, toScreen);
     _grid(canvas, size, toScreen);
 
     final cloud = this.cloud;
-    if (cloud != null) {
+    if (pose != null && cloud != null) {
       final c = math.cos(pose.yaw), s = math.sin(pose.yaw);
       final xy = <double>[];
       for (var i = 0; i + 2 < cloud.length; i += 3) {
@@ -408,8 +543,57 @@ class _MapPainter extends CustomPainter {
     for (final m in marks) {
       _stopPoint(canvas, toScreen(m.dx, m.dy));
     }
-    _robot(canvas, toScreen(pose.x, pose.y), pose.yaw + rotation);
+    _pois(canvas, toScreen);
+    if (pose != null) _robot(canvas, toScreen(pose.x, pose.y), pose.yaw + rotation);
     if (!compact) _scaleBar(canvas, size);
+  }
+
+  /// The occupancy map: its top-left corner at the map's largest y, one image pixel per cell.
+  void _map(
+    Canvas canvas,
+    ui.Image image,
+    MapHeader header,
+    Offset Function(double, double) toScreen,
+  ) {
+    final corner = toScreen(header.originX, header.originY + header.heightMetres);
+    canvas
+      ..save()
+      ..translate(corner.dx, corner.dy)
+      ..rotate(-rotation)
+      ..scale(
+        header.widthMetres * scale / image.width,
+        header.heightMetres * scale / image.height,
+      )
+      ..drawImage(image, Offset.zero, Paint()..filterQuality = FilterQuality.low)
+      ..restore();
+  }
+
+  /// POIs: an amber dot with a tick towards the heading the robot takes there, and the name.
+  void _pois(Canvas canvas, Offset Function(double, double) toScreen) {
+    final radius = compact ? 4.0 : 7.0;
+    final tick = Paint()
+      ..color = Palette.caution
+      ..strokeWidth = compact ? 1.5 : 2.5
+      ..strokeCap = StrokeCap.round;
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Palette.auto;
+    final edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = Colors.white;
+    for (final poi in pois) {
+      final at = toScreen(poi.x, poi.y);
+      // screen y points down, map yaw turns counter-clockwise
+      final angle = poi.yaw + rotation;
+      final reach = radius + (compact ? 4 : 8);
+      canvas.drawLine(at, at + Offset(math.cos(angle), -math.sin(angle)) * reach, tick);
+      if (poi.id == highlight) canvas.drawCircle(at, radius + 5, ring);
+      canvas.drawCircle(at, radius, Paint()..color = Palette.caution);
+      canvas.drawCircle(at, radius, edge);
+      if (!compact) _label(canvas, poi.name, at + Offset(radius + 4, -radius - 12));
+    }
   }
 
   void _points(Canvas canvas, List<double> xy, double alpha) {
@@ -575,6 +759,10 @@ class _MapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MapPainter old) =>
+      old.mapImage != mapImage ||
+      old.mapHeader != mapHeader ||
+      old.pois != pois ||
+      old.highlight != highlight ||
       old.cloud != cloud ||
       old.route != route ||
       old.trailLength != trailLength ||
