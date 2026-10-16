@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:molly_controller/widgets/map_view.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:molly_controller/widgets/map_view.dart';
 
 void main() {
   test('angles wrap into (-pi, pi]', () {

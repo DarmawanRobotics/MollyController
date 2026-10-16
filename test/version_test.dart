@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:molly_controller/screens/connect_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:molly_controller/screens/connect_screen.dart';
 
 void main() {
   test('the start screen shows the version in pubspec.yaml', () {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:molly_controller/protocol/messages.dart';
 import 'package:molly_controller/theme.dart';
 import 'package:molly_controller/widgets/glance.dart';
-import 'package:flutter_test/flutter_test.dart';
 
 Future<void> show(WidgetTester tester, Map<String, dynamic> state, {bool showLoad = true}) {
   return tester.pumpWidget(
@@ -26,15 +26,9 @@ Future<void> show(WidgetTester tester, Map<String, dynamic> state, {bool showLoa
   );
 }
 
-const _running = {'on': true, 'state': 'running', 'model': 'moondream'};
-
 void main() {
-  testWidgets('a clear floor, the people and the load at a glance', (tester) async {
+  testWidgets('the people and the load at a glance', (tester) async {
     await show(tester, {
-      'inspection': {
-        ..._running,
-        'last': {'cat': 'none', 'age': 3},
-      },
       'people': {'on': true, 'state': 'running', 'count': 4},
       'health': {
         'ok': true,
@@ -46,25 +40,16 @@ void main() {
         'temp': 53.0,
       },
     });
-    expect(find.text('Bersih · 3 dtk lalu'), findsOneWidget);
     expect(find.text('4 orang'), findsOneWidget);
     expect(find.text('CPU 23%  GPU 41%'), findsOneWidget);
     expect(find.text('RAM 5.1/15.3 GB  53°C'), findsOneWidget);
   });
 
-  testWidgets('a finding stands out; off and no-GPU states read plainly', (tester) async {
+  testWidgets('off and no-GPU states read plainly', (tester) async {
     await show(tester, {
-      'inspection': {
-        ..._running,
-        'last': {'cat': 'trash', 'reported': true, 'age': 75},
-        'queue': 7,
-        'queue_max': 50,
-      },
       'people': {'on': false, 'state': 'off'},
       'health': {'ok': true, 'cpu': 95.0, 'ram': 40.0},
     });
-    expect(find.text('Sampah · 1 mnt lalu'), findsOneWidget);
-    expect(find.text('7 foto antre'), findsOneWidget);
     expect(find.text('Orang: mati'), findsOneWidget);
     expect(find.text('CPU 95%  GPU –'), findsOneWidget);
     expect(find.text('RAM 40%'), findsOneWidget);
@@ -82,7 +67,7 @@ void main() {
     expect(text.style?.color, Palette.stop);
   });
 
-  testWidgets('without inspection, people or load figures nothing shows', (tester) async {
+  testWidgets('without people or load figures nothing shows', (tester) async {
     await show(tester, {
       'health': {'ok': true, 'issues': []},
     });

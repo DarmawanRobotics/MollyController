@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:gamepads/gamepads.dart';
 
 import '../input/gamepad_input.dart';
-import '../l10n.dart' show categoryLabel;
 import '../net/teleop_client.dart';
 import '../protocol/messages.dart' show RobotState;
 import '../robot_actions.dart';
@@ -16,7 +15,6 @@ import '../widgets/camera_view.dart';
 import '../widgets/glance.dart';
 import '../widgets/hud.dart';
 import '../widgets/map_view.dart';
-import 'patrol_screen.dart';
 import 'routes_screen.dart';
 import 'settings_screen.dart';
 
@@ -55,9 +53,6 @@ class _DriveScreenState extends State<DriveScreen> {
   /// The route being recorded: since when, and the stop points marked in it.
   DateTime? _recordingSince;
   final List<Offset> _marks = [];
-
-  /// Inspection findings already seen, so only a new one raises a toast.
-  int? _seenReports;
 
   StreamSubscription<GamepadButton>? _buttons;
   late final AppLifecycleListener _lifecycle;
@@ -147,36 +142,16 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
-  /// Follows the robot's recording flag and inspection findings; a reconnect (no telemetry yet)
-  /// changes nothing.
+  /// Follows the robot's recording flag; a reconnect (no telemetry yet) changes nothing.
   void _onClient() {
     _syncStreams();
     final state = client.state;
-    if (client.status != LinkStatus.connected || state.seq == 0) {
-      _seenReports = null;
-      return;
-    }
+    if (client.status != LinkStatus.connected || state.seq == 0) return;
     if (state.recording) {
       _recordingSince ??= DateTime.now();
     } else {
       _recordingSince = null;
     }
-    _noticeFinding();
-  }
-
-  /// A new finding of the robot's inspection: a toast with what it saw.
-  void _noticeFinding() {
-    final inspection = client.state.inspection;
-    if (inspection == null) return;
-    final seen = _seenReports;
-    _seenReports = inspection.reports;
-    final last = inspection.last;
-    if (seen == null || inspection.reports <= seen || last == null || last.clear) return;
-    HapticFeedback.mediumImpact();
-    final what = categoryLabel(s.settings.language, last.category);
-    _show(
-      Toast(s.t('finding', {'what': what}), color: Palette.caution, icon: Icons.report_rounded),
-    );
   }
 
   /// Streams for the settings (here or on the settings page) and the link. The camera comes over
@@ -345,9 +320,6 @@ class _DriveScreenState extends State<DriveScreen> {
 
   Future<void> _openRoutes() => _push(RoutesScreen(services: s, onRun: _run));
 
-  Future<void> _openPatrol() =>
-      _push(PatrolScreen(client: client, language: s.settings.language, onRun: _run));
-
   Future<bool> _confirm(String title, String body, String action) async {
     final result = await _cover(
       () => showDialog<bool>(
@@ -515,7 +487,7 @@ class _DriveScreenState extends State<DriveScreen> {
           // the map listens to the viewport itself: a pinch does not rebuild the whole screen
           child: ListenableBuilder(listenable: _viewport, builder: (context, _) => _viewButtons()),
         ),
-        // last inspection, people in view and the robot's load, above the toolbar
+        // people in view and the robot's load, above the toolbar
         if (size.height - (top + insetHeight + 52) - 70 > 30)
           Positioned(
             key: const ValueKey('glance'),
@@ -531,7 +503,6 @@ class _DriveScreenState extends State<DriveScreen> {
                   state: state,
                   language: s.settings.language,
                   showLoad: s.settings.showLoad,
-                  onTap: (client.welcome?.has('inspection_set') ?? false) ? _openPatrol : null,
                 ),
               ),
             ),
@@ -847,7 +818,6 @@ class _DriveScreenState extends State<DriveScreen> {
     bool busy(String command) => _busy.contains(command);
     final recording = state.recording;
     final running = !_idleNav.contains(state.nav);
-    final inspection = inspectionLook(state.inspection);
     const width = 50.0;
 
     return Glass(
@@ -914,18 +884,6 @@ class _DriveScreenState extends State<DriveScreen> {
               busy: busy('nav_stop'),
               onPressed: has('nav_stop') && state.nav != 'NAV_INACTIVE'
                   ? () => _run('nav_stop', label: s.t('nav_ended'))
-                  : null,
-            ),
-            const _ToolbarDivider(),
-            // the inspection's state at a glance; the page sets it and the patrol speed
-            ActionButton(
-              icon: inspection.icon,
-              label: s.t('act_inspection'),
-              tint: inspection.color,
-              active: state.inspection?.state == 'running',
-              width: width,
-              onPressed: has('inspection_set') || has('people_set') || has('nav_speed')
-                  ? _openPatrol
                   : null,
             ),
           ],

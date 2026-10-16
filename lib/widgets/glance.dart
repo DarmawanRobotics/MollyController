@@ -7,9 +7,8 @@ import '../protocol/messages.dart';
 import '../theme.dart';
 import 'hud.dart';
 
-/// What the robot sees and how hard it works, at a glance under the small view: the last
-/// inspection (clear or a finding), the people in view and the computer's load. Tap it for the
-/// inspection page with the details.
+/// What the robot sees and how hard it works, at a glance under the small view: the people in
+/// view and the computer's load.
 class GlancePanel extends StatelessWidget {
   const GlancePanel({
     super.key,
@@ -28,12 +27,9 @@ class GlancePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inspection = state.inspection;
     final people = state.people;
     final load = state.load;
     final rows = <Widget>[
-      if (inspection != null) _inspectionRow(inspection),
-      if (inspection != null && inspection.queue > 0) _queueRow(inspection),
       if (people != null) _peopleRow(people),
       if (showLoad && load != null) ..._loadRows(load),
     ];
@@ -50,43 +46,6 @@ class GlancePanel extends StatelessWidget {
           children: rows,
         ),
       ),
-    );
-  }
-
-  Widget _inspectionRow(InspectionStatus inspection) {
-    final last = inspection.last;
-    switch (inspection.state) {
-      case 'running':
-        if (last == null) return _row(Icons.visibility_rounded, Palette.muted, t('glance_waiting'));
-        if (last.clear) {
-          return _row(
-            Icons.check_circle_rounded,
-            Palette.ok,
-            _withAge(t('cat_none'), last.age),
-            strong: true,
-          );
-        }
-        return _row(
-          Icons.report_rounded,
-          last.reported ? Palette.stop : Palette.caution,
-          _withAge(categoryLabel(language, last.category), last.age),
-          strong: true,
-        );
-      case 'loading':
-        return _row(Icons.hourglass_top_rounded, Palette.caution, t('ai_loading'));
-      case 'off':
-        return _row(Icons.visibility_off_rounded, Palette.muted, t('ai_off'));
-      default:
-        return _row(Icons.error_rounded, Palette.stop, t('ai_error'));
-    }
-  }
-
-  Widget _queueRow(InspectionStatus inspection) {
-    final full = inspection.queueMax > 0 && inspection.queue >= inspection.queueMax * 0.8;
-    return _row(
-      Icons.photo_library_rounded,
-      full ? Palette.caution : Palette.muted,
-      inspection.queue == 1 ? t('queue_glance_one') : t('queue_glance', {'n': inspection.queue}),
     );
   }
 
@@ -134,12 +93,6 @@ class GlancePanel extends StatelessWidget {
         strong: memory == 2,
       ),
     ];
-  }
-
-  String _withAge(String what, int? age) {
-    if (age == null) return what;
-    final ago = age < 60 ? t('ago_s', {'n': age}) : t('ago_min', {'n': age ~/ 60});
-    return '$what · $ago';
   }
 
   Widget _row(IconData icon, Color color, String text, {bool strong = false}) {

@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:molly_controller/net/whep.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:molly_controller/net/whep.dart';
 
 /// A stand-in for the robot's MediaMTX WHEP endpoint; [reply] answers each request.
 class FakeRobot {
