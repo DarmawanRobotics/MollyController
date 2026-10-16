@@ -74,6 +74,9 @@ class TeleopClient extends ChangeNotifier {
   static const _commandTimeout = Duration(seconds: 8);
   static const _runTimeout = Duration(seconds: 90);
 
+  /// Pause between asking for a map or site that is still out of date.
+  static const _resyncEvery = Duration(seconds: 3);
+
   RawDatagramSocket? _socket;
   InternetAddress? _address;
   String _host = '';
@@ -92,6 +95,8 @@ class TeleopClient extends ChangeNotifier {
   DateTime _lastPing = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastState = DateTime.fromMillisecondsSinceEpoch(0);
   int _lastSeq = 0;
+  DateTime _mapAsked = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _siteAsked = DateTime.fromMillisecondsSinceEpoch(0);
 
   LinkStatus status = LinkStatus.idle;
 
@@ -115,7 +120,15 @@ class TeleopClient extends ChangeNotifier {
 
   final cameraFrame = ValueNotifier<Uint8List?>(null);
   final lidarPoints = ValueNotifier<Float32List?>(null);
+
+  /// The loaded route, or the path the robot found to its goal.
   final routePoints = ValueNotifier<List<RoutePoint>>(const []);
+
+  /// The occupancy map of the active site (or the one being mapped).
+  final mapLayer = ValueNotifier<MapLayer?>(null);
+
+  /// POIs and tours of the active site.
+  final site = ValueNotifier<SiteData?>(null);
 
   bool cameraEnabled = true;
   bool lidarEnabled = true;
@@ -212,6 +225,8 @@ class TeleopClient extends ChangeNotifier {
     cameraFrame.value = null;
     lidarPoints.value = null;
     routePoints.value = const [];
+    mapLayer.value = null;
+    site.value = null;
     _address = null; // late datagrams of this robot are ignored from now on
     _setStatus(LinkStatus.idle);
   }
@@ -223,6 +238,8 @@ class TeleopClient extends ChangeNotifier {
     cameraFrame.dispose();
     lidarPoints.dispose();
     routePoints.dispose();
+    mapLayer.dispose();
+    site.dispose();
     super.dispose();
   }
 
@@ -430,6 +447,7 @@ class TeleopClient extends ChangeNotifier {
         } else {
           notifyListeners();
         }
+        _resync(now);
       case 'ack':
         final pending = _pending[message['id']];
         if (pending == null) return;
@@ -483,6 +501,29 @@ class TeleopClient extends ChangeNotifier {
     _lastSeq = seq;
   }
 
+  /// Asks again for the map or the site when the robot's revision differs from the one here
+  /// (a lost chunk loses the whole frame); at most every [_resyncEvery].
+  void _resync(DateTime now) {
+    if (status != LinkStatus.connected) return;
+    final welcome = this.welcome;
+    final mapRev = state.mapRev;
+    if (mapRev != null &&
+        mapRev != mapLayer.value?.header.rev &&
+        (welcome?.has('get_map') ?? false) &&
+        now.difference(_mapAsked) > _resyncEvery) {
+      _mapAsked = now;
+      unawaited(command('get_map'));
+    }
+    final siteRev = state.site?.rev;
+    if (siteRev != null &&
+        siteRev != site.value?.rev &&
+        (welcome?.has('get_site') ?? false) &&
+        now.difference(_siteAsked) > _resyncEvery) {
+      _siteAsked = now;
+      unawaited(command('get_site'));
+    }
+  }
+
   void _onFrame(StreamFrame frame) {
     switch (frame.stream) {
       case streamCamera:
@@ -491,6 +532,12 @@ class TeleopClient extends ChangeNotifier {
         if (lidarEnabled) lidarPoints.value = decodePoints(frame.payload);
       case streamRoute:
         routePoints.value = decodeRoute(frame.payload);
+      case streamMap:
+        final layer = decodeMap(frame.payload);
+        if (layer != null) mapLayer.value = layer;
+      case streamSite:
+        final data = decodeSite(frame.payload);
+        if (data != null) site.value = data;
     }
   }
 }
