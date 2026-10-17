@@ -70,3 +70,19 @@ class SectionTitle extends StatelessWidget {
     );
   }
 }
+
+/// A column of a page, scrolled as a whole: every control in it is built, also below the fold.
+class PageColumn extends StatelessWidget {
+  const PageColumn({super.key, required this.children, this.padding = EdgeInsets.zero});
+
+  final List<Widget> children;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: padding,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+    );
+  }
+}

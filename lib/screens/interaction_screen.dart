@@ -191,7 +191,7 @@ class _InteractionScreenState extends State<InteractionScreen> {
   /// Saying something, the quick phrases, the speech under way and a visitor's question.
   Widget _talk(RobotState state) {
     final canSay = _has('say');
-    return ListView(
+    return PageColumn(
       padding: const EdgeInsets.only(left: 8, right: 4, bottom: 16),
       children: [
         SectionTitle(t('section_say'), top: 6),
@@ -393,7 +393,7 @@ class _InteractionScreenState extends State<InteractionScreen> {
   /// The visitors around the robot, the greeter and the gestures.
   Widget _around(RobotState state) {
     final gestures = {...?client.welcome?.gestures}.where((name) => name.isNotEmpty).toList();
-    return ListView(
+    return PageColumn(
       padding: const EdgeInsets.only(bottom: 16),
       children: [
         SectionTitle(t('section_visitors'), top: 6),

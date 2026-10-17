@@ -227,7 +227,7 @@ class _SiteScreenState extends State<SiteScreen> {
     final mapping = state.mapping;
     final mappingNow = mapping?.active ?? false;
     final recording = state.recording;
-    return ListView(
+    return PageColumn(
       padding: const EdgeInsets.only(left: 8, right: 4, bottom: 16),
       children: [
         SectionTitle(t('section_sites')),
@@ -401,7 +401,7 @@ class _SiteScreenState extends State<SiteScreen> {
     final tours = site?.tours ?? const <Tour>[];
     final canEdit = _has('poi_update');
     final canAdd = _has('poi_add') && state.pose != null && !_busy.contains('poi-add');
-    return ListView(
+    return PageColumn(
       padding: const EdgeInsets.only(bottom: 16),
       children: [
         SectionTitle(t('section_pois')),

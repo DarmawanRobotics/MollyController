@@ -92,6 +92,7 @@ Future<FakeRobot> openPage(WidgetTester tester, TeleopClient client) async {
 /// Scrolls the control with [key] into view and taps it.
 Future<void> tapKey(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
+  await tester.pumpAndSettle(); // a text field just typed in scrolls to its caret first
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
@@ -156,8 +157,8 @@ void main() {
 
     await tapKey(tester, 'site-poi-cafe');
     expect(find.text('Edit POI'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('poi-narration')), 'Coffee and cake');
     await tapKey(tester, 'poi-here');
+    await tester.enterText(find.byKey(const ValueKey('poi-narration')), 'Coffee and cake');
     await tapKey(tester, 'poi-save');
     expect(robot.sent['poi_update'], {
       'poi': {

@@ -49,6 +49,7 @@ Future<FakeRobot> openPage(WidgetTester tester, TeleopClient client) async {
 
 /// Scrolls [finder] into view and taps it.
 Future<void> tapOn(WidgetTester tester, Finder finder) async {
+  await tester.pumpAndSettle(); // a text field just typed in scrolls to its caret first
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
@@ -99,6 +100,7 @@ void main() {
     final robot = await openPage(tester, client);
 
     await tester.ensureVisible(find.byKey(const ValueKey('ask-text')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('ask-text')), 'When does the cafe open?');
     await tapKey(tester, 'ask-send');
     expect(robot.sent['ask'], {
