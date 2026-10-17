@@ -143,7 +143,7 @@ MapHeader? _mapHeader(Uint8List json) {
   }
 }
 
-/// Site payload: JSON {"t": "site", "rev", "name", "pois": [...], "tours": [...]}; null when broken.
+/// Site payload: JSON {"t": "site", "rev", "name", "pois", "tours"}; null when broken.
 SiteData? decodeSite(Uint8List payload) {
   try {
     return SiteData.fromJson(jsonDecode(utf8.decode(payload)));

@@ -850,6 +850,20 @@ class Tour {
   };
 }
 
+/// The answer to `site_list`: the robot's sites and the active one.
+class SiteList {
+  const SiteList(this.sites, this.active);
+
+  factory SiteList.fromJson(Object? json) => json is Map
+      ? SiteList(_strings(json['sites']), _str(json['active']))
+      : const SiteList([], '');
+
+  final List<String> sites;
+
+  /// Empty when no site is loaded.
+  final String active;
+}
+
 /// The site stream: the POIs and tours of the active site.
 class SiteData {
   const SiteData({this.rev, this.name = '', this.pois = const [], this.tours = const []});

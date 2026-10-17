@@ -15,10 +15,12 @@ import '../widgets/camera_view.dart';
 import '../widgets/glance.dart';
 import '../widgets/hud.dart';
 import '../widgets/map_view.dart';
+import '../widgets/poi_dialog.dart';
 import '../widgets/tour_card.dart';
 import 'guide_screen.dart';
 import 'routes_screen.dart';
 import 'settings_screen.dart';
+import 'site_screen.dart';
 
 /// Home while connected: the camera and the map (tap the small box to swap them), STOP and the
 /// robot's own actions on the right, the tour under way at the top, mapping and guide icons at the
@@ -260,12 +262,19 @@ class _DriveScreenState extends State<DriveScreen> {
     s.settings.update(mainView: s.settings.mainView == 'map' ? 'camera' : 'map');
   }
 
-  Future<void> _toggleRecording() async {
-    if (client.state.recording) {
-      await _run('record_stop', label: s.t('record_saved'));
-      return;
-    }
-    await _run('record_start', label: s.t('record_started'));
+  /// A point of interest where the robot stands; the map page edits it further.
+  Future<void> _addPoiHere() async {
+    final edit = await _cover(
+      () => showDialog<PoiEdit>(
+        context: context,
+        builder: (context) => PoiDialog(
+          language: s.settings.language,
+          gestures: client.welcome?.gestures ?? const [],
+        ),
+      ),
+    );
+    if (edit == null || !mounted) return;
+    await _run('poi_add', args: edit.addArgs(), label: s.t('poi_added', {'name': edit.name}));
   }
 
   Future<void> _markStop() async {
@@ -393,6 +402,10 @@ class _DriveScreenState extends State<DriveScreen> {
   Future<void> _openSettings() => _push(SettingsScreen(services: s));
 
   Future<void> _openRoutes() => _push(RoutesScreen(services: s, onRun: _run));
+
+  Future<void> _openSite() => _push(
+    SiteScreen(client: client, language: s.settings.language, onRun: _run, onRoutes: _openRoutes),
+  );
 
   Future<void> _openGuide() =>
       _push(GuideScreen(client: client, language: s.settings.language, onRun: _run));
@@ -902,14 +915,16 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  /// Mapping (record a route, its stop points and the AprilTags) and guiding (localize, the guide
-  /// page, start / pause / resume, end).
+  /// Mapping (the map page, a POI where the robot stands, the AprilTags; while a route is recorded
+  /// its finish and stop points) and guiding (localize, the guide page, start / pause / resume,
+  /// end).
   Widget _toolbar() {
     final state = client.state;
     final welcome = client.welcome;
     bool has(String command) => welcome?.has(command) ?? false;
     bool busy(String command) => _busy.contains(command);
     final recording = state.recording;
+    final mapping = state.mapping?.active ?? false;
     final tour = state.tour;
     final touring = tour != null && tour.active;
     final walking = state.planner?.walking ?? false;
@@ -926,23 +941,49 @@ class _DriveScreenState extends State<DriveScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ActionButton(
-              icon: recording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
-              label: s.t(recording ? 'act_finish' : 'act_record'),
-              tint: Palette.stop,
-              active: recording,
-              width: width,
-              busy: busy('record_start') || busy('record_stop'),
-              onPressed: has('record_start') ? _toggleRecording : null,
-            ),
-            ActionButton(
-              icon: Icons.add_location_alt_rounded,
-              label: s.t('act_stop_point'),
-              tint: Palette.caution,
-              width: width,
-              busy: busy('mark_stop'),
-              onPressed: has('mark_stop') && recording ? _markStop : null,
-            ),
+            // a route being recorded: its finish and stop points take the map and POI places
+            if (recording) ...[
+              ActionButton(
+                key: const ValueKey('act-finish'),
+                icon: Icons.stop_circle_rounded,
+                label: s.t('act_finish'),
+                tint: Palette.stop,
+                active: true,
+                width: width,
+                busy: busy('record_stop'),
+                onPressed: has('record_stop')
+                    ? () => _run('record_stop', label: s.t('record_saved'))
+                    : null,
+              ),
+              ActionButton(
+                key: const ValueKey('act-point'),
+                icon: Icons.add_location_alt_rounded,
+                label: s.t('act_stop_point'),
+                tint: Palette.caution,
+                width: width,
+                busy: busy('mark_stop'),
+                onPressed: has('mark_stop') ? _markStop : null,
+              ),
+            ] else ...[
+              ActionButton(
+                key: const ValueKey('act-map'),
+                icon: Icons.map_rounded,
+                label: s.t('act_map'),
+                tint: Palette.remote,
+                active: mapping,
+                width: width,
+                onPressed: welcome != null ? _openSite : null,
+              ),
+              ActionButton(
+                key: const ValueKey('act-poi'),
+                icon: Icons.add_location_alt_rounded,
+                label: s.t('act_poi'),
+                tint: Palette.caution,
+                width: width,
+                busy: busy('poi_add'),
+                onPressed: has('poi_add') && state.pose != null ? _addPoiHere : null,
+              ),
+            ],
             ActionButton(
               icon: Icons.qr_code_2_rounded,
               label: s.t('act_tags'),
@@ -959,12 +1000,6 @@ class _DriveScreenState extends State<DriveScreen> {
               width: width,
               busy: busy('localize'),
               onPressed: has('localize') ? () => _run('localize', label: s.t('localized')) : null,
-            ),
-            ActionButton(
-              icon: Icons.route_rounded,
-              label: s.t('act_routes'),
-              width: width,
-              onPressed: has('list_routes') && has('load_route') ? _openRoutes : null,
             ),
             ActionButton(
               icon: Icons.tour_rounded,
