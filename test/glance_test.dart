@@ -67,6 +67,27 @@ void main() {
     expect(text.style?.color, Palette.stop);
   });
 
+  testWidgets('what the robot says, its visitors and the greeter', (tester) async {
+    await show(tester, {
+      'speech': {'state': 'speaking', 'text': 'Selamat datang di museum', 'queued': 0},
+      'visitors': {'count': 3, 'front': 1, 'behind': 2, 'nearest': 1.2},
+      'greeter': {'enabled': true, 'state': 'idle'},
+    });
+    expect(find.text('Selamat datang di museum'), findsOneWidget);
+    expect(find.text('3 pengunjung · 2 mengikuti'), findsOneWidget);
+    expect(find.text('Penyapa nyala'), findsOneWidget);
+
+    // quiet, nobody around, greeter off
+    await show(tester, {
+      'speech': {'state': 'done', 'text': 'Selamat datang di museum'},
+      'visitors': {'count': 0},
+      'greeter': {'enabled': false},
+    });
+    expect(find.text('Selamat datang di museum'), findsNothing);
+    expect(find.text('Tak ada pengunjung'), findsOneWidget);
+    expect(find.text('Penyapa nyala'), findsNothing);
+  });
+
   testWidgets('without people or load figures nothing shows', (tester) async {
     await show(tester, {
       'health': {'ok': true, 'issues': []},

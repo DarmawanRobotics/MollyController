@@ -7,8 +7,8 @@ import '../protocol/messages.dart';
 import '../theme.dart';
 import 'hud.dart';
 
-/// What the robot sees and how hard it works, at a glance under the small view: the people in
-/// view and the computer's load.
+/// What the robot says, who is around it and how hard it works, at a glance under the small view:
+/// the speech under way, the visitors and the greeter, the people in view and the computer's load.
 class GlancePanel extends StatelessWidget {
   const GlancePanel({
     super.key,
@@ -27,9 +27,22 @@ class GlancePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final speech = state.speech;
+    final visitors = state.visitors;
+    final greeter = state.greeter;
     final people = state.people;
     final load = state.load;
     final rows = <Widget>[
+      if (speech != null && speech.speaking)
+        _row(
+          Icons.record_voice_over_rounded,
+          Palette.auto,
+          speech.text.isEmpty ? t('speech_speaking') : speech.text,
+          strong: true,
+        ),
+      if (visitors != null) _visitorsRow(visitors),
+      if (greeter != null && greeter.enabled)
+        _row(Icons.waving_hand_rounded, Palette.ok, t('greeter_on')),
       if (people != null) _peopleRow(people),
       if (showLoad && load != null) ..._loadRows(load),
     ];
@@ -46,6 +59,21 @@ class GlancePanel extends StatelessWidget {
           children: rows,
         ),
       ),
+    );
+  }
+
+  /// The visitors around the robot (lidar), and how many follow it.
+  Widget _visitorsRow(Visitors visitors) {
+    final count = visitors.count;
+    if (count == 0) return _row(Icons.groups_rounded, Palette.muted, t('visitors_none_short'));
+    return _row(
+      Icons.groups_rounded,
+      Palette.auto,
+      [
+        count == 1 ? t('visitor_one') : t('visitors_count', {'n': count}),
+        if (visitors.behind > 0) t('visitors_following', {'n': visitors.behind}),
+      ].join(' · '),
+      strong: true,
     );
   }
 

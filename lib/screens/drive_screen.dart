@@ -18,14 +18,15 @@ import '../widgets/map_view.dart';
 import '../widgets/poi_dialog.dart';
 import '../widgets/tour_card.dart';
 import 'guide_screen.dart';
+import 'interaction_screen.dart';
 import 'routes_screen.dart';
 import 'settings_screen.dart';
 import 'site_screen.dart';
 
 /// Home while connected: the camera and the map (tap the small box to swap them), STOP and the
-/// robot's own actions on the right, the tour under way at the top, mapping and guide icons at the
-/// bottom. Driving is on the gamepad; touch is for the views (pinch and drag the big map, long
-/// press to walk somewhere).
+/// robot's own actions on the right, the tour under way at the top, mapping, guide and talk icons
+/// at the bottom. Driving is on the gamepad; touch is for the views (pinch and drag the big map,
+/// long press to walk somewhere).
 class DriveScreen extends StatefulWidget {
   const DriveScreen({super.key, required this.services});
 
@@ -409,6 +410,9 @@ class _DriveScreenState extends State<DriveScreen> {
 
   Future<void> _openGuide() =>
       _push(GuideScreen(client: client, language: s.settings.language, onRun: _run));
+
+  Future<void> _openTalk() =>
+      _push(InteractionScreen(client: client, language: s.settings.language, onRun: _run));
 
   Future<bool> _confirm(String title, String body, String action) async {
     final result = await _cover(
@@ -916,8 +920,8 @@ class _DriveScreenState extends State<DriveScreen> {
   }
 
   /// Mapping (the map page, a POI where the robot stands, the AprilTags; while a route is recorded
-  /// its finish and stop points) and guiding (localize, the guide page, start / pause / resume,
-  /// end).
+  /// its finish and stop points), guiding (localize, the guide page, start / pause / resume, end)
+  /// and talking with the visitors.
   Widget _toolbar() {
     final state = client.state;
     final welcome = client.welcome;
@@ -1029,6 +1033,18 @@ class _DriveScreenState extends State<DriveScreen> {
               width: width,
               busy: busy('tour_stop') || busy('go_cancel') || busy('nav_stop'),
               onPressed: touring || walking || state.nav != 'NAV_INACTIVE' ? _end : null,
+            ),
+            const _ToolbarDivider(),
+            ActionButton(
+              key: const ValueKey('act-talk'),
+              icon: Icons.record_voice_over_rounded,
+              label: s.t('act_talk'),
+              tint: Palette.auto,
+              active: state.speech?.speaking ?? false,
+              width: width,
+              onPressed: has('say') || has('greet') || has('gesture') || has('ask')
+                  ? _openTalk
+                  : null,
             ),
           ],
         ),
