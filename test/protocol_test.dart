@@ -368,6 +368,6 @@ void main() {
     expect(robotAction('stand_up').label('id'), 'Berdiri');
     expect(robotAction('front_flip').label('en'), 'Front flip');
     expect(robotAction('damp').confirm, isTrue);
-    expect(tr('id', 'nav_FOLLOWING'), 'Patroli');
+    expect(tr('id', 'nav_FOLLOWING'), 'Berjalan');
   });
 }

@@ -7,7 +7,7 @@ import 'package:gamepads/gamepads.dart';
 
 import '../input/gamepad_input.dart';
 import '../net/teleop_client.dart';
-import '../protocol/messages.dart' show RobotState;
+import '../protocol/messages.dart' show PlannerStatus, RobotState;
 import '../robot_actions.dart';
 import '../settings.dart';
 import '../theme.dart';
@@ -15,12 +15,15 @@ import '../widgets/camera_view.dart';
 import '../widgets/glance.dart';
 import '../widgets/hud.dart';
 import '../widgets/map_view.dart';
+import '../widgets/tour_card.dart';
+import 'guide_screen.dart';
 import 'routes_screen.dart';
 import 'settings_screen.dart';
 
 /// Home while connected: the camera and the map (tap the small box to swap them), STOP and the
-/// robot's own actions on the right, mapping and patrol icons at the bottom. Driving is on the
-/// gamepad; touch is for the views (pinch and drag the big map).
+/// robot's own actions on the right, the tour under way at the top, mapping and guide icons at the
+/// bottom. Driving is on the gamepad; touch is for the views (pinch and drag the big map, long
+/// press to walk somewhere).
 class DriveScreen extends StatefulWidget {
   const DriveScreen({super.key, required this.services});
 
@@ -31,7 +34,7 @@ class DriveScreen extends StatefulWidget {
 }
 
 class _DriveScreenState extends State<DriveScreen> {
-  /// Navigation states in which no patrol is under way (Start shows instead of Pause).
+  /// Navigation states in which the robot is not walking (Start shows instead of Pause).
   static const _idleNav = {'NAV_INACTIVE', 'NO_PATH', 'PAUSED', 'GOAL_REACHED'};
 
   Services get s => widget.services;
@@ -53,6 +56,13 @@ class _DriveScreenState extends State<DriveScreen> {
   /// The route being recorded: since when, and the stop points marked in it.
   DateTime? _recordingSince;
   final List<Offset> _marks = [];
+
+  /// A route was loaded last (not a tour or a walk): Start follows it.
+  bool _routeReady = false;
+
+  /// The walk's state and when it changed: an arrival or a failure shows for a few seconds.
+  String? _plannerState;
+  DateTime _plannerChanged = DateTime.fromMillisecondsSinceEpoch(0);
 
   StreamSubscription<GamepadButton>? _buttons;
   late final AppLifecycleListener _lifecycle;
@@ -142,15 +152,26 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
-  /// Follows the robot's recording flag; a reconnect (no telemetry yet) changes nothing.
+  /// Follows the robot's recording flag and the walk; a reconnect (no telemetry yet) changes
+  /// nothing.
   void _onClient() {
     _syncStreams();
     final state = client.state;
     if (client.status != LinkStatus.connected || state.seq == 0) return;
     if (state.recording) {
-      _recordingSince ??= DateTime.now();
+      if (_recordingSince == null) {
+        // a fresh route: the map shows only what this recording covers
+        _recordingSince = DateTime.now();
+        _marks.clear();
+        client.clearTrail();
+      }
     } else {
       _recordingSince = null;
+    }
+    final planner = state.planner?.state;
+    if (planner != _plannerState) {
+      _plannerState = planner;
+      _plannerChanged = DateTime.now();
     }
   }
 
@@ -187,7 +208,13 @@ class _DriveScreenState extends State<DriveScreen> {
     setState(() => _busy.add(name));
     final result = await client.command(name, args);
     if (!mounted) return result;
-    setState(() => _busy.remove(name));
+    setState(() {
+      _busy.remove(name);
+      if (result.ok && name == 'load_route') _routeReady = true;
+      if (result.ok && const {'tour_start', 'go_to_poi', 'go_to'}.contains(name)) {
+        _routeReady = false;
+      }
+    });
     if (!result.ok || !quiet) {
       final text = label ?? name;
       _show(
@@ -238,14 +265,7 @@ class _DriveScreenState extends State<DriveScreen> {
       await _run('record_stop', label: s.t('record_saved'));
       return;
     }
-    final result = await _run('record_start', label: s.t('record_started'));
-    if (!result.ok || !mounted) return;
-    // a fresh route: the map shows only what this recording covers
-    setState(() {
-      _recordingSince = DateTime.now();
-      _marks.clear();
-      client.clearTrail();
-    });
+    await _run('record_start', label: s.t('record_started'));
   }
 
   Future<void> _markStop() async {
@@ -259,21 +279,48 @@ class _DriveScreenState extends State<DriveScreen> {
     if (result.ok && pose != null && mounted) setState(() => _marks.add(Offset(pose.x, pose.y)));
   }
 
-  /// Start, pause or resume the patrol; in REMOTE the robot only follows it once in AUTO.
-  Future<void> _navPrimary() async {
+  /// Start, pause or resume: the tour under way, else the walk or the loaded route; with nothing
+  /// to follow the guide page opens to pick a tour. In REMOTE the robot only walks once in AUTO.
+  Future<void> _primary() async {
     final state = client.state;
+    final tour = state.tour;
+    if (tour != null && tour.active) {
+      final name = tour.paused ? 'tour_resume' : 'tour_pause';
+      await _run(name, label: s.t('${name}_done'));
+      return;
+    }
     final CommandResult result;
     if (state.navPaused) {
       result = await _run('nav_resume', label: s.t('nav_resumed'), quiet: state.remote);
     } else if (!_idleNav.contains(state.nav)) {
       await _run('nav_pause', label: s.t('nav_paused'));
       return;
-    } else {
+    } else if (_routeReady && (client.welcome?.has('nav_start') ?? false)) {
       result = await _run('nav_start', label: s.t('nav_started'), quiet: state.remote);
+    } else {
+      await _openGuide();
+      return;
     }
     if (result.ok && mounted && client.state.remote) {
       _show(Toast(s.t('remote_nav_hint'), color: Palette.auto, icon: Icons.info_outline_rounded));
     }
+  }
+
+  /// End the tour, the walk or the route.
+  Future<void> _end() async {
+    final state = client.state;
+    final tour = state.tour;
+    if (tour != null && tour.active) {
+      await _run('tour_stop', label: s.t('tour_stop_done'));
+    } else if (state.planner?.walking ?? false) {
+      await _run('go_cancel', label: s.t('walk_cancelled'));
+    } else {
+      await _run('nav_stop', label: s.t('nav_ended'));
+    }
+  }
+
+  void _tourCommand(String name) {
+    _run(name, label: s.t('${name}_done'));
   }
 
   /// The POI the robot is busy with: the tour's stop, else the goal it walks to.
@@ -346,6 +393,9 @@ class _DriveScreenState extends State<DriveScreen> {
   Future<void> _openSettings() => _push(SettingsScreen(services: s));
 
   Future<void> _openRoutes() => _push(RoutesScreen(services: s, onRun: _run));
+
+  Future<void> _openGuide() =>
+      _push(GuideScreen(client: client, language: s.settings.language, onRun: _run));
 
   Future<bool> _confirm(String title, String body, String action) async {
     final result = await _cover(
@@ -420,6 +470,7 @@ class _DriveScreenState extends State<DriveScreen> {
     const top = 50.0;
     const scrim = [Color(0xA6000000), Color(0x00000000)];
     final state = client.state;
+    final tour = state.tour;
     final modeColor = Palette.forMode(state.mode);
     final mapMain = s.settings.mainView == 'map';
     final insetWidth = math.max(150.0, math.min(300.0, size.width * 0.27));
@@ -575,6 +626,17 @@ class _DriveScreenState extends State<DriveScreen> {
                         icon: Icons.videogame_asset_off_rounded,
                       ),
                     ),
+                  ),
+                ),
+              if (tour != null && tour.active)
+                Padding(
+                  key: const ValueKey('tour'),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TourCard(
+                    tour: tour,
+                    language: s.settings.language,
+                    busy: _busy,
+                    onCommand: _tourCommand,
                   ),
                 ),
               if (status != null)
@@ -840,15 +902,20 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  /// Mapping (record a route, its stop points and the AprilTags) and patrol (localize, pick a
-  /// route, start / pause / resume, end).
+  /// Mapping (record a route, its stop points and the AprilTags) and guiding (localize, the guide
+  /// page, start / pause / resume, end).
   Widget _toolbar() {
     final state = client.state;
     final welcome = client.welcome;
     bool has(String command) => welcome?.has(command) ?? false;
     bool busy(String command) => _busy.contains(command);
     final recording = state.recording;
-    final running = !_idleNav.contains(state.nav);
+    final tour = state.tour;
+    final touring = tour != null && tour.active;
+    final walking = state.planner?.walking ?? false;
+    final moving = !_idleNav.contains(state.nav);
+    final paused = touring ? (tour?.paused ?? false) : state.navPaused;
+    final running = touring || moving;
     const width = 50.0;
 
     return Glass(
@@ -900,22 +967,33 @@ class _DriveScreenState extends State<DriveScreen> {
               onPressed: has('list_routes') && has('load_route') ? _openRoutes : null,
             ),
             ActionButton(
-              icon: running ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              label: s.t(state.navPaused ? 'act_resume' : (running ? 'act_pause' : 'act_start')),
+              icon: Icons.tour_rounded,
+              label: s.t('act_guide'),
+              tint: Palette.auto,
+              active: touring,
+              width: width,
+              onPressed: has('tour_start') || has('go_to_poi') ? _openGuide : null,
+            ),
+            ActionButton(
+              icon: running && !paused ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              label: s.t(paused ? 'act_resume' : (running ? 'act_pause' : 'act_start')),
               tint: Palette.auto,
               active: running,
               width: width,
-              busy: busy('nav_start') || busy('nav_pause') || busy('nav_resume'),
-              onPressed: has('nav_start') && has('nav_pause') ? _navPrimary : null,
+              busy:
+                  busy('tour_pause') ||
+                  busy('tour_resume') ||
+                  busy('nav_start') ||
+                  busy('nav_pause') ||
+                  busy('nav_resume'),
+              onPressed: has('tour_start') || has('nav_start') ? _primary : null,
             ),
             ActionButton(
               icon: Icons.stop_rounded,
               label: s.t('act_end'),
               width: width,
-              busy: busy('nav_stop'),
-              onPressed: has('nav_stop') && state.nav != 'NAV_INACTIVE'
-                  ? () => _run('nav_stop', label: s.t('nav_ended'))
-                  : null,
+              busy: busy('tour_stop') || busy('go_cancel') || busy('nav_stop'),
+              onPressed: touring || walking || state.nav != 'NAV_INACTIVE' ? _end : null,
             ),
           ],
         ),
@@ -960,10 +1038,14 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  /// Recording or patrol state, under the top bar.
+  /// Recording, mapping, walking or route state, under the top bar (a tour has its own card).
   Widget? _statusPill() {
     final state = client.state;
     final since = _recordingSince;
+    final mapping = state.mapping;
+    final planner = state.planner;
+    final touring = state.tour?.active ?? false;
+    final recent = DateTime.now().difference(_plannerChanged) < const Duration(seconds: 6);
     final String text;
     final Color color;
     final IconData icon;
@@ -976,6 +1058,26 @@ class _DriveScreenState extends State<DriveScreen> {
       ].join('  ·  ');
       color = Palette.stop;
       icon = Icons.fiber_manual_record_rounded;
+    } else if (mapping != null && mapping.active) {
+      final area = mapping.area;
+      text = [
+        s.t('mapping_pill', {'site': mapping.site}),
+        if (area != null) '${area.round()} m²',
+        s.t('scans', {'n': mapping.scans}),
+      ].join('  ·  ');
+      color = Palette.remote;
+      icon = Icons.map_rounded;
+    } else if (touring) {
+      return null;
+    } else if (planner != null && (planner.walking || (recent && planner.state != 'idle'))) {
+      text = _plannerText(planner);
+      color = switch (planner.state) {
+        'failed' => Palette.stop,
+        'arrived' => Palette.ok,
+        'cancelled' => Palette.muted,
+        _ => Palette.auto,
+      };
+      icon = Icons.directions_walk_rounded;
     } else if (state.nav != 'NAV_INACTIVE') {
       final label = s.navLabel(state.nav);
       text = state.navMessage.isEmpty ? label : '$label  ·  ${state.navMessage}';
@@ -1005,6 +1107,27 @@ class _DriveScreenState extends State<DriveScreen> {
         ],
       ),
     );
+  }
+
+  /// Where the robot walks to (a POI by name, or a place) and how far it still is.
+  String _plannerText(PlannerStatus planner) {
+    final goal = planner.goal.isEmpty
+        ? s.t('a_place')
+        : (client.site.value?.poi(planner.goal)?.name ?? planner.goal);
+    final line = switch (planner.state) {
+      'arrived' => s.t('arrived_at', {'name': goal}),
+      'failed' => s.t('no_way', {'name': goal}),
+      'cancelled' => s.t('walk_cancelled'),
+      'planning' => s.t('finding_way', {'name': goal}),
+      _ => s.t('walking_to', {'name': goal}),
+    };
+    final remaining = planner.remaining;
+    return [
+      line,
+      if (planner.walking && remaining != null)
+        s.t('metres_left', {'m': remaining.toStringAsFixed(1)}),
+      if (planner.message.isNotEmpty) planner.message,
+    ].join('  ·  ');
   }
 
   Widget _estopBanner() {
