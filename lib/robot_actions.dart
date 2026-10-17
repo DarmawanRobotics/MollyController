@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// How a robot driver command looks on the action rail.
+/// How a robot driver command or a gesture looks on the action rail and the talk page.
 class RobotAction {
   const RobotAction(this.name, this.icon, this.labelId, this.labelEn, {this.confirm = false});
 
@@ -9,76 +9,59 @@ class RobotAction {
   final String labelId;
   final String labelEn;
 
-  /// Ask before running: the robot drops, jumps or changes control.
+  /// Ask before running: the robot drops, or its control changes hands.
   final bool confirm;
 
   String label(String language) => language == 'id' ? labelId : labelEn;
 }
 
+/// The Deep Robotics Lite3 driver's commands (`welcome.robot_commands`) and Molly's gestures
+/// (`welcome.gestures`).
 const _known = <RobotAction>[
+  // posture and modes
   RobotAction('stand_up', Icons.accessibility_new_rounded, 'Berdiri', 'Stand up'),
   RobotAction('sit_down', Icons.airline_seat_recline_normal_rounded, 'Duduk', 'Sit down'),
-  RobotAction('lie_down', Icons.bed_rounded, 'Rebah', 'Lie down'),
-  RobotAction('recovery_stand', Icons.restart_alt_rounded, 'Bangkit', 'Recover'),
-  RobotAction('balance_stand_mode', Icons.balance_rounded, 'Seimbang', 'Balance'),
-  RobotAction('balance_stand', Icons.balance_rounded, 'Seimbang', 'Balance'),
   RobotAction('move_mode', Icons.directions_walk_rounded, 'Mode jalan', 'Walk mode'),
-  RobotAction('lock_mode', Icons.lock_rounded, 'Kunci', 'Lock'),
-  RobotAction('damp', Icons.power_settings_new_rounded, 'Lemaskan', 'Damp', confirm: true),
-  RobotAction('slow_speed', Icons.speed_rounded, 'Gigi pelan', 'Slow gear'),
-  RobotAction('normal_speed', Icons.speed_rounded, 'Gigi normal', 'Normal gear'),
-  RobotAction('fast_speed', Icons.fast_forward_rounded, 'Gigi cepat', 'Fast gear'),
-  RobotAction('crawl_forward', Icons.pets_rounded, 'Merangkak', 'Crawl', confirm: true),
+  RobotAction('pose_mode', Icons.open_with_rounded, 'Mode pose', 'Pose mode'),
+  RobotAction('navigation_mode', Icons.navigation_rounded, 'Mode navigasi', 'Nav mode'),
   RobotAction(
-    'climbing_high_platform',
-    Icons.stairs_rounded,
-    'Naik platform',
-    'Climb platform',
-    confirm: true,
-  ),
-  RobotAction(
-    'hand_stand',
-    Icons.sports_gymnastics_rounded,
-    'Handstand',
-    'Handstand',
-    confirm: true,
-  ),
-  RobotAction('unload_squat', Icons.download_rounded, 'Jongkok', 'Squat', confirm: true),
-  RobotAction('hello', Icons.waving_hand_rounded, 'Sapa', 'Hello'),
-  RobotAction('stretch', Icons.self_improvement_rounded, 'Peregangan', 'Stretch'),
-  RobotAction('dance', Icons.music_note_rounded, 'Joget', 'Dance', confirm: true),
-  RobotAction(
-    'enter_lab_mode',
-    Icons.science_rounded,
-    'Masuk mode lab',
-    'Lab mode on',
-    confirm: true,
-  ),
-  RobotAction('exit_lab_mode', Icons.science_outlined, 'Keluar mode lab', 'Lab mode off'),
-  RobotAction(
-    'enter_entertainment_mode',
-    Icons.celebration_rounded,
-    'Mode hiburan',
-    'Fun mode on',
-    confirm: true,
-  ),
-  RobotAction(
-    'exit_entertainment_mode',
-    Icons.celebration_outlined,
-    'Keluar hiburan',
-    'Fun mode off',
-  ),
-  RobotAction(
-    'sdk_control_right',
+    'manual_mode',
     Icons.sports_esports_rounded,
-    'Ambil kendali',
-    'Take control',
+    'Mode manual',
+    'Manual mode',
+    confirm: true,
   ),
+  // gaits
+  RobotAction('gait_slow', Icons.speed_rounded, 'Gait pelan', 'Slow gait'),
+  RobotAction('gait_medium', Icons.speed_rounded, 'Gait sedang', 'Medium gait'),
+  RobotAction('gait_fast', Icons.fast_forward_rounded, 'Gait cepat', 'Fast gait'),
+  RobotAction('gait_general', Icons.terrain_rounded, 'Gait umum', 'All-terrain gait'),
+  RobotAction('gait_grip', Icons.hiking_rounded, 'Gait cengkeram', 'Grip gait'),
+  RobotAction('gait_crawl', Icons.pets_rounded, 'Merangkak', 'Crawl gait'),
+  RobotAction('gait_high_step', Icons.stairs_rounded, 'Langkah tinggi', 'High step'),
+  RobotAction('keep_stepping_on', Icons.directions_run_rounded, 'Jalan di tempat', 'Step in place'),
   RobotAction(
-    'remote_control_right',
-    Icons.settings_remote_rounded,
-    'Kendali ke remote',
-    'Give to remote',
+    'keep_stepping_off',
+    Icons.do_not_step_rounded,
+    'Berhenti melangkah',
+    'Stop stepping',
+  ),
+  // gestures
+  RobotAction('hello', Icons.waving_hand_rounded, 'Sapa', 'Hello'),
+  RobotAction('nod', Icons.swap_vert_rounded, 'Mengangguk', 'Nod'),
+  RobotAction('bow', Icons.arrow_downward_rounded, 'Membungkuk', 'Bow'),
+  RobotAction('look_left', Icons.west_rounded, 'Tengok kiri', 'Look left'),
+  RobotAction('look_right', Icons.east_rounded, 'Tengok kanan', 'Look right'),
+  RobotAction('stop_action', Icons.do_not_disturb_on_rounded, 'Henti aksi', 'Stop action'),
+  // system
+  RobotAction('speaker_on', Icons.volume_up_rounded, 'Speaker nyala', 'Speaker on'),
+  RobotAction('speaker_off', Icons.volume_off_rounded, 'Speaker mati', 'Speaker off'),
+  RobotAction('save_data', Icons.save_rounded, 'Simpan data', 'Save data'),
+  RobotAction(
+    'reset_zero',
+    Icons.restart_alt_rounded,
+    'Kalibrasi nol',
+    'Zero the joints',
     confirm: true,
   ),
   RobotAction(

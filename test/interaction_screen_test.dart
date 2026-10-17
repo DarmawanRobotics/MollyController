@@ -26,7 +26,7 @@ TeleopClient robotClient(Map<String, dynamic> state) {
   return TeleopClient()
     ..welcome = Welcome.fromJson({
       'commands': ['say', 'stop_speech', 'greet', 'greeter_set', 'gesture', 'ask'],
-      'gestures': ['hello', 'nod', 'dance'],
+      'gestures': ['hello', 'nod', 'bow'],
     })
     ..state = RobotState.fromJson(state);
 }
@@ -126,13 +126,10 @@ void main() {
     await tapKey(tester, 'greet');
     expect(robot.sent.containsKey('greet'), isTrue);
 
+    expect(find.text('Bow'), findsOneWidget);
     await tapKey(tester, 'gesture-hello');
     expect(robot.sent['gesture'], {'name': 'hello'});
-
-    // dancing moves the whole robot: asked first
-    await tapKey(tester, 'gesture-dance');
-    expect(robot.sent['gesture'], {'name': 'hello'});
-    await tapOn(tester, find.text('Run'));
-    expect(robot.sent['gesture'], {'name': 'dance'});
+    await tapKey(tester, 'gesture-bow');
+    expect(robot.sent['gesture'], {'name': 'bow'});
   });
 }
