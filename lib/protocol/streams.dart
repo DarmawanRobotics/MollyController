@@ -10,6 +10,8 @@ import 'messages.dart';
 const streamCamera = 1;
 const streamLidar = 2;
 const streamRoute = 3;
+const streamMap = 4;
+const streamSite = 5;
 
 /// `MLY1` magic, u8 stream, u32 frame, u16 chunk index, u16 chunk count (little-endian).
 const headerSize = 13;
