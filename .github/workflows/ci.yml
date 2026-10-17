@@ -1,0 +1,99 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      # every analyzer finding becomes an annotation (readable without the job log)
+      - name: Analyze
+        run: |
+          dart analyze --format=machine > analysis.txt 2>&1 || true
+          while IFS='|' read -r severity type code file line column length message; do
+            case "$severity" in
+              ERROR) level=error ;;
+              WARNING) level=warning ;;
+              INFO) level=notice ;;
+              *) continue ;;
+            esac
+            echo "::$level file=${file#"$PWD"/},line=$line,col=$column,title=$code::$message"
+          done < analysis.txt
+          flutter analyze --no-fatal-infos
+      # formatting is reported, not enforced: one notice per file with the change
+      - name: Format
+        run: |
+          dart format lib test > /dev/null
+          for file in $(git diff --name-only); do
+            diff=$(git diff -U0 "$file" | tail -n +5 | head -c 3000)
+            diff=${diff//'%'/'%25'}
+            diff=${diff//$'\r'/'%0D'}
+            diff=${diff//$'\n'/'%0A'}
+            echo "::notice file=$file,title=dart format::$diff"
+          done
+      # every failing test becomes an annotation with its error (readable without the job log)
+      - name: Test
+        run: |
+          set +e
+          flutter test --reporter json > test-results.json
+          status=$?
+          python3 - <<'PY'
+          import json
+          names, errors, printed = {}, {}, {}
+          for line in open('test-results.json'):
+              try:
+                  event = json.loads(line)
+              except ValueError:
+                  continue
+              kind = event.get('type')
+              if kind == 'testStart':
+                  names[event['test']['id']] = event['test']['name']
+              elif kind == 'error':
+                  errors.setdefault(event['testID'], []).append(
+                      event['error'] + '\n' + event.get('stackTrace', '')[:1200]
+                  )
+              elif kind == 'print':
+                  printed.setdefault(event['testID'], []).append(event['message'])
+          for test, messages in errors.items():
+              text = '\n'.join(messages + printed.get(test, []))[:6000]
+              text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              title = names.get(test, 'test').replace(',', ' ').replace(':', ' ')
+              print(f'::error title={title}::{text}')
+          passed = sum(1 for _ in names) - len(errors)
+          print(f'{len(names)} tests, {len(errors)} failed')
+          PY
+          exit $status
+
+  # an installable build for the handheld (Actions → this run → Artifacts); signed with the
+  # runner's debug key, so uninstall a locally built app before installing this one
+  apk:
+    needs: analyze-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: molly-controller-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
