@@ -49,7 +49,7 @@ class AppSettings extends ChangeNotifier {
   /// The robot computer's CPU, GPU and memory use on the drive screen (for development).
   bool get showLoad => _prefs.getBool('show_load') ?? true;
 
-  /// Inspection time of a stop point marked from the handheld, seconds.
+  /// Wait time of a stop point marked from the handheld, seconds.
   double get stopDwell => _prefs.getDouble('dwell') ?? 10;
 
   /// Speed level 1..3, see [speedScale].
