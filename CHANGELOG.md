@@ -2,6 +2,12 @@
 
 Versions follow `version` in `pubspec.yaml`.
 
+## Unreleased
+
+**Docs**
+- README: configuration table (defaults from `lib/settings.dart`) and a protocol section.
+- Comments no longer call the stop point wait an inspection time.
+
 ## 0.1.0 (2026-10-17)
 
 The first Molly Controller, started from Pashupati Controller 2.6.1 (its history is kept).

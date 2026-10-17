@@ -654,7 +654,7 @@ class _MapPainter extends CustomPainter {
       }
     }
 
-    // start ring, then the stop points with their inspection time
+    // start ring, then the stop points with their wait time
     canvas.drawCircle(
       points.first,
       compact ? 4 : 6,

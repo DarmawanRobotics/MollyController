@@ -18,7 +18,8 @@ guide visitors and talk with them, from a Retroid Pocket 4 or any Android device
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 [Features](#features) · [Install](#install) · [Robot side](#robot-side) ·
-[Controls](#controls) · [A site, step by step](#a-site-step-by-step) · [Develop](#develop)
+[Configuration](#configuration) · [Protocol](#protocol) · [Controls](#controls) ·
+[A site, step by step](#a-site-step-by-step) · [Develop](#develop)
 
 </div>
 
@@ -113,6 +114,26 @@ Uninstalling clears the app's settings.
 **First connection.** On the start screen, tap the version three times to open the connection
 settings. Enter the address of the robot's Jetson (default `192.168.1.110:9880`) and its token.
 Robots on the same network also show up in the list by themselves.
+
+## Configuration
+
+All settings live on the handheld (shared preferences) and apply at once.
+
+| Setting | Default | Where |
+|---|---|---|
+| Robot address | `192.168.1.110` | start screen, tap the version three times |
+| Port | `9880` | same |
+| Token | empty (must match `teleop_udp_node.token`) | same |
+| Handheld name | `Retroid` | same |
+| Language | Indonesian (`id`) | Settings |
+| Video, frame rate | on, 8 fps | Settings |
+| Stop point wait | 10 s | Settings |
+
+## Protocol
+
+UDP, protocol Molly v1 (`molly-1`), port 9880, binary stream frames start with `MLY1`. The full
+spec is [PROTOCOL.md](https://github.com/DarmawanRobotics/Molly/blob/main/src/molly_bridge/PROTOCOL.md)
+in the Molly repo; the app side is `lib/protocol/` and `lib/net/teleop_client.dart`.
 
 ## Robot side
 
