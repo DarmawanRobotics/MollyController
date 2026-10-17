@@ -933,7 +933,7 @@ class _DriveScreenState extends State<DriveScreen> {
     final touring = tour != null && tour.active;
     final walking = state.planner?.walking ?? false;
     final moving = !_idleNav.contains(state.nav);
-    final paused = touring ? (tour?.paused ?? false) : state.navPaused;
+    final paused = touring ? tour.paused : state.navPaused;
     final running = touring || moving;
     const width = 50.0;
 
