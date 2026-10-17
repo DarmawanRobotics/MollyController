@@ -7,6 +7,7 @@ import '../net/teleop_client.dart';
 import '../protocol/messages.dart';
 import '../theme.dart';
 import '../widgets/hud.dart';
+import '../widgets/page_header.dart';
 import '../widgets/tour_card.dart';
 
 /// The guide, live on the robot: start a tour, walk to a POI, follow the tour under way, and set
@@ -111,27 +112,15 @@ class _GuideScreenState extends State<GuideScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      Expanded(
-                        child: Text(
-                          site == null || site.name.isEmpty
-                              ? t('guide_page')
-                              : '${t('guide_page')}  ·  ${site.name}',
-                          style: Txt.title,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _has('get_site') ? () => client.command('get_site') : null,
-                        tooltip: t('refresh'),
-                        icon: const Icon(Icons.refresh_rounded),
-                      ),
-                    ],
+                  PageHeader(
+                    title: site == null || site.name.isEmpty
+                        ? t('guide_page')
+                        : '${t('guide_page')}  ·  ${site.name}',
+                    action: IconButton(
+                      onPressed: _has('get_site') ? () => client.command('get_site') : null,
+                      tooltip: t('refresh'),
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
                   ),
                   if (tour != null && tour.active)
                     Padding(
@@ -169,7 +158,7 @@ class _GuideScreenState extends State<GuideScreen> {
     return ListView(
       padding: const EdgeInsets.only(left: 8, right: 4, bottom: 16),
       children: [
-        _section(t('section_tours')),
+        SectionTitle(t('section_tours'), top: 6),
         if (site == null)
           Text(t('no_site'), style: Txt.small)
         else if (tours.isEmpty)
@@ -217,7 +206,7 @@ class _GuideScreenState extends State<GuideScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
       children: [
-        _section(t('section_pois')),
+        SectionTitle(t('section_pois'), top: 6),
         if (site != null && pois.isEmpty) Text(t('no_pois'), style: Txt.small),
         // its own Material: list tiles paint their ink there
         Material(
@@ -345,20 +334,6 @@ class _GuideScreenState extends State<GuideScreen> {
               child: Text(line, style: Txt.small.copyWith(color: Palette.text)),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _section(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 6),
-      child: Text(
-        title.toUpperCase(),
-        style: Txt.small.copyWith(
-          color: Palette.auto,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-        ),
       ),
     );
   }

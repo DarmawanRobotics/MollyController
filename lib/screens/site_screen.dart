@@ -5,6 +5,7 @@ import '../net/teleop_client.dart';
 import '../protocol/messages.dart';
 import '../theme.dart';
 import '../widgets/hud.dart';
+import '../widgets/page_header.dart';
 import '../widgets/poi_dialog.dart';
 import '../widgets/tour_dialog.dart';
 
@@ -184,55 +185,19 @@ class _SiteScreenState extends State<SiteScreen> {
             final state = client.state;
             final site = client.site.value;
             final name = state.site?.name ?? '';
-            final done = _done;
             return Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      Flexible(
-                        child: Text(
-                          name.isEmpty ? t('site_page') : '${t('site_page')}  ·  $name',
-                          style: Txt.title,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: done == null
-                            ? const SizedBox.shrink()
-                            : Row(
-                                key: const ValueKey('site-done'),
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  const Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 16,
-                                    color: Palette.ok,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      done,
-                                      style: Txt.small.copyWith(color: Palette.ok),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                      IconButton(
-                        onPressed: _has('site_list') ? _fetchSites : null,
-                        tooltip: t('refresh'),
-                        icon: const Icon(Icons.refresh_rounded),
-                      ),
-                    ],
+                  PageHeader(
+                    title: name.isEmpty ? t('site_page') : '${t('site_page')}  ·  $name',
+                    done: _done,
+                    action: IconButton(
+                      onPressed: _has('site_list') ? _fetchSites : null,
+                      tooltip: t('refresh'),
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Expanded(
@@ -265,7 +230,7 @@ class _SiteScreenState extends State<SiteScreen> {
     return ListView(
       padding: const EdgeInsets.only(left: 8, right: 4, bottom: 16),
       children: [
-        _section(t('section_sites')),
+        SectionTitle(t('section_sites')),
         if (!_has('site_list'))
           Text(t('sites_unsupported'), style: Txt.small)
         else if (sites == null)
@@ -291,7 +256,7 @@ class _SiteScreenState extends State<SiteScreen> {
               onLoad: _has('site_load') && !mappingNow ? () => _load(name) : null,
             ),
           ),
-        _section(t('section_mapping')),
+        SectionTitle(t('section_mapping')),
         if (!_has('map_start'))
           Text(t('mapping_unsupported'), style: Txt.small)
         else ...[
@@ -357,7 +322,7 @@ class _SiteScreenState extends State<SiteScreen> {
             ),
           ],
         ),
-        _section(t('section_routes')),
+        SectionTitle(t('section_routes')),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -439,7 +404,7 @@ class _SiteScreenState extends State<SiteScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
       children: [
-        _section(t('section_pois')),
+        SectionTitle(t('section_pois')),
         if (site == null)
           Text(t('no_site'), style: Txt.small)
         else if (pois.isEmpty)
@@ -484,7 +449,7 @@ class _SiteScreenState extends State<SiteScreen> {
             label: Text(state.pose == null ? t('poi_needs_pose') : t('poi_add')),
           ),
         ),
-        _section(t('section_tours')),
+        SectionTitle(t('section_tours')),
         if (site != null && tours.isEmpty) Text(t('no_tours'), style: Txt.small),
         Material(
           type: MaterialType.transparency,
@@ -528,20 +493,6 @@ class _SiteScreenState extends State<SiteScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _section(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 6),
-      child: Text(
-        title.toUpperCase(),
-        style: Txt.small.copyWith(
-          color: Palette.auto,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-        ),
-      ),
     );
   }
 }
